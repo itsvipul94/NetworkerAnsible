@@ -1,0 +1,74 @@
+---
+# tasks file for Networker_Start_Stop_NMC
+- name: Capture Action
+  set_fact:
+    action: "{{ Action|lower }}"
+  when: Action is defined
+
+- set_fact:
+    response_message: "The action to be performed on the NMC service is either not defined or is invalid"
+    status_code: 2 
+  when: 'Action is not defined or ("stop" not in action and "start" not in action)'
+
+- debug:
+    var: status_code
+
+- set_fact:
+    command: "start-service 'gstd'"
+  when: 
+  - Action is defined
+  - '"start" in action'
+
+- set_fact:
+    command: "stop-service 'gstd'"
+  when:
+  - Action is defined
+  - '"stop" in action'
+- debug:
+    var: command
+
+
+- name: Perform action on NMC service
+  win_shell: "{{ command }}"
+  register: PerformAction
+  ignore_errors: true
+  when: status_code is not defined
+- debug:
+    var: PerformAction
+- set_fact:
+    status_code: 2
+    response_message: "Failed to perform the required action.Error encountered:\n {{ PerformAction.stderr }}"
+  when: PerformAction is failed
+
+- name: Check status afer execution of the {{ action }}ing the service
+  win_shell: get-service "gstd"
+  ignore_errors: true
+  register: status
+  when: status_code is not defined and PerformAction.skipped is not defined
+
+- set_fact:
+    status_code: 2
+    response_message: "The NMC service could not be stopped as requied. The current status is as below:-\n {{ status.stdout }}"
+  when: 
+  - status_code is not defined 
+  - '"stop" in action'
+  - '"Running" in status.stdout'
+- set_fact:
+    status_code: 2
+    response_message: "The NMC service could not be started as requied. The current status is as below:-\n {{ status.stdout }}"
+  when:
+  - status_code is not defined
+  - '"start" in action'
+  - 'not "Running" in status.stdout'
+
+- set_fact:
+    response_message: "The required action has been perfomed successfully and below is the current status of the NMC Service\n {{ status.stdout }}"
+  when: status_code is not defined and status.skipped is not defined and status is success
+
+- debug:
+    var: response_message
+- debug:
+    var: status_code
+  when: status_code is defined
+
+
