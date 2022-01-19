@@ -1,0 +1,86 @@
+---
+# tasks file for Networker_Retrieve_Backup_Instances
+- name: Fetch Client Id for the client {{ Client_Name }}
+  win_shell: |
+    $User="Administrator"
+    $Password="Password123!"
+    $SNowUser = $User 
+    $SNowPass = $Password | ConvertTo-SecureString -asPlainText -Force 
+    $SNowCreds = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList $SNowUser, $SNowPass 
+    function Ignore-SelfSignedCerts
+    {
+    try
+    {
+    Write-Host "Adding TrustAllCertsPolicy type." -ForegroundColor White
+    Add-Type -TypeDefinition @"
+    using System.Net;
+    using System.Security.Cryptography.X509Certificates;
+    public class TrustAllCertsPolicy : ICertificatePolicy
+    {
+    public bool CheckValidationResult(
+    ServicePoint srvPoint, X509Certificate certificate,
+    WebRequest request, int certificateProblem)
+    {
+    return true;
+    }
+    }
+    "@
+    Write-Host "TrustAllCertsPolicy type added." -ForegroundColor White
+    }
+    catch
+    {
+    Write-Host $_ -ForegroundColor "Yellow"
+    }
+    [System.Net.ServicePointManager]::CertificatePolicy = New-Object TrustAllCertsPolicy
+    }
+
+    Ignore-SelfSignedCerts; 
+    function GetBackupInstances($BackupServer,$ClientName)
+    {
+    try{
+    $u="https://"+$BackupServer+":9090/nwrestapi/v3/global/clients?q=aliases:"+$ClientName
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    $result=Invoke-RestMethod -Uri $u -method Get -Credential $SNowCreds -ContentType "Application/json" 
+    $ClientId=@{}
+    $ClientId=$result.clients.clientId
+    $C=$ClientId[0]
+    $URL="https://"+$BackupServer+":9090/nwrestapi/v3/global/backups/?q=clientId:"+$C   
+    $URL
+    $finalresult=Invoke-RestMethod -Uri $URL -Method GET -Credential $SNowCreds -ContentType "Application/json" 
+    $op=$finalresult.backups
+
+
+    $op
+    }
+    catch{
+    "Error Occurred"
+    Write-Host $_ -ForegroundColor "Yellow"
+    }}
+    GetBackupInstances {{ BackupServer }} {{ Client_Name }}
+  ignore_errors: true
+  register: FetchBackupInstances
+- set_fact:
+    status_code: 2
+    response_message: "Failed to retrieve backup instance details.\n {{ FetchBackupInstances.stderr }}" 
+  when: FetchBackupInstances is failed and FetchBackupInstances.stderr !="" 
+
+- set_fact:
+    status_code: 2
+    response_message: "Failed to retrieve backup instance details.\n {{ FetchBackupInstances.stdout }}" 
+  when:
+  - FetchBackupInstances is success 
+  - "'Error Occurred' in FetchBackupInstances.stdout"
+  
+- set_fact:
+    response_message: "Successfully retrieved backup instance details for {{ Client_Name }} \n {{ FetchBackupInstances.stdout }}"
+  when:
+  - FetchBackupInstances is success 
+  - "not 'Error Occurred' in FetchBackupInstances.stdout"
+  - "'clientId' in FetchBackupInstances.stdout"
+- debug:
+    var: response_message
+- debug:
+    var: status_code
+  when: status_code is defined
+- debug:
+    var: FetchBackupInstances

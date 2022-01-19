@@ -1,0 +1,19 @@
+---
+# tasks file for Networker_Verify_Daemons_Services
+- name: Check status afer execution of the {{ action }}ing the service
+  win_shell: get-service "nsr*"
+  ignore_errors: true
+  register: status
+- set_fact:
+    response_message: "The status of all the networker daemons have been retrieved as below\n {{ status.stdout }}"
+  when: status is success and status.stdout !=""
+- set_fact:
+    status_code: 2
+    response_message: "Error occured whie trying to fetch status:\n {{ status.stderr }}"
+  when: status.stderr!=""
+- debug:
+    var: status
+- debug:
+    var: response_message
+- debug:
+    var: status_code
