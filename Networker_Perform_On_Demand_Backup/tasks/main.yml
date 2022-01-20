@@ -1,0 +1,89 @@
+---
+# tasks file for Networker_Perform_On_Demand_Backup
+- name: Trigger Ondemand backup on Client-{{ Client_Name }} with policy-{{ PolicyName }} and workflow-{{ Workflow }}
+  win_shell: |
+    $User="Administrator"
+    $Password="Password123!"
+    $SNowUser = $User 
+    $SNowPass = $Password | ConvertTo-SecureString -asPlainText -Force 
+    $SNowCreds = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList $SNowUser, $SNowPass 
+    function Ignore-SelfSignedCerts
+    {
+    try
+    {
+    Write-Host "Adding TrustAllCertsPolicy type." -ForegroundColor White
+    Add-Type -TypeDefinition @"
+    using System.Net;
+    using System.Security.Cryptography.X509Certificates;
+    public class TrustAllCertsPolicy : ICertificatePolicy
+    {
+    public bool CheckValidationResult(
+    ServicePoint srvPoint, X509Certificate certificate,
+    WebRequest request, int certificateProblem)
+    {
+    return true;
+    }
+    }
+    "@
+    Write-Host "TrustAllCertsPolicy type added." -ForegroundColor White
+    }
+    catch
+    {
+    Write-Host $_ -ForegroundColor "Yellow"
+    }
+    [System.Net.ServicePointManager]::CertificatePolicy = New-Object TrustAllCertsPolicy
+    }
+
+    Ignore-SelfSignedCerts; 
+    function TriggerOnDemandBackup($BackupServer,$ClientName,$PolicyName,$Workflow)
+    {
+    try{
+    $u="https://"+$BackupServer+":9090/nwrestapi/v3/global/clients?q=aliases:"+$ClientName
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    $result=Invoke-RestMethod -Uri $u -method Get -Credential $SNowCreds -ContentType "Application/json"
+    
+    $ClientId=$result.clients.links.href|out-string
+    $x=$ClientId -split "clients"
+    $C=$x[1].Trim()
+    $C
+    $URL="https://"+$BackupServer+":9090/nwrestapi/v3/global/clients"+$C+"/op/backup"
+    $body=@{}
+    $body.add("policy",$PolicyName)
+    $body.add("workflow",$workflow)
+    $actualbody=$body|ConvertTo-Json
+    
+    $finalresult=Invoke-RestMethod -Uri $URL -Method POST -Credential $SNowCreds -Body $actualbody -ContentType "Application/json"
+    $op=$finalresult|Convertto-json
+    $op
+    }
+    catch{
+    "Error Occurred"
+    Write-Host $_ -ForegroundColor "Yellow"
+    }}
+    TriggerOnDemandBackup {{ BackupServer }} {{ Client_Name }} {{ PolicyName  }} '{{ Workflow }}'
+   
+  ignore_errors: true
+  register: OnDemandBackup
+- set_fact:
+    status_code: 2
+    response_message: "Failed to trigger on demand backup on the specified client.\n {{ OnDemandBackup.stderr }}" 
+  when: OnDemandBackup is failed and OnDemandBackup.stderr !="" 
+
+- set_fact:
+    status_code: 2
+    response_message: "Failed to trigger on demand backup on the specified client.\n {{ OnDemandBackup.stdout }}" 
+  when:
+  - OnDemandBackup is success 
+  - "'Error Occurred' in OnDemandBackup.stdout"
+  
+- set_fact:
+    response_message: "Successfully triggered backup for {{ Client_Name }} with policy-{{ PolicyName }} and workflow-{{ Workflow }}\n {{ OnDemandBackup.stdout }}"
+  when:
+  - OnDemandBackup is success 
+  - "not 'Error Occurred' in OnDemandBackup.stdout"
+- debug:
+    var: response_message
+- debug:
+    var: status_code
+- debug:
+    var: OnDemandBackup    
