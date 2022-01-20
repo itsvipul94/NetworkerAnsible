@@ -60,7 +60,7 @@
     "Error Occurred"
     Write-Host $_ -ForegroundColor "Yellow"
     }}
-    TriggerOnDemandBackup {{ BackupServer }} {{ Client_Name }} {{ PolicyName  }} '{{ Workflow }}'
+    TriggerOnDemandBackup '{{ BackupServer }}' '{{ Client_Name }}' '{{ PolicyName  }}' '{{ Workflow }}'
    
   ignore_errors: true
   register: OnDemandBackup
