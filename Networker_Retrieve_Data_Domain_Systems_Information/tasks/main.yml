@@ -1,0 +1,28 @@
+---
+# tasks file for Networker_Retrieve_Data_Domain_Systems_Information
+- name: Get data domain systems information
+  uri:
+    url: "https://{{ BackupServer }}:9090/nwrestapi/v3/global/datadomainsystems"
+    user: "administrator"
+    password: "Password123!"
+    method: GET
+    force_basic_auth: yes
+    validate_certs: false
+    status_code: 200
+  register: DomainInfo
+  ignore_errors: true
+  delegate_to: localhost
+- debug:
+    var: DomainInfo
+- set_fact:
+    status_code: 2
+    respone_message: "Error Encountered while fetching data domain systems\n{{ DomainInfo }}"
+  when: DomainInfo is failed
+- set_fact:
+    response_message: "Data domain systems information retrieved successfully\n{{ DomainInfo }}"
+  when: DomainInfo is success
+- debug:
+    var: response_message
+- debug:
+    var: status_code
+  
